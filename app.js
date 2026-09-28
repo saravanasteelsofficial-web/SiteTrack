@@ -26,6 +26,8 @@ let filter = 'all';
 let query = '';
 let editing = null;
 let selectedIds = new Set();
+let lastAIMessage = '';
+let lastAIRecipient = null;
 const AI_FUNCTION_URL = 'https://us-central1-sitetrack-24731.cloudfunctions.net/aiAssistant';
 
 const app = document.querySelector('#app');
@@ -770,7 +772,21 @@ async function callAI(prompt, mode = 'assistant', customerData = customers) {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'AI request failed');
-    result.textContent = data.answer || 'No answer returned.';
+    const answer = data.answer || 'No answer returned.';
+    if (mode === 'message') {
+      lastAIMessage = answer.trim();
+      result.innerHTML = `
+        <div class="field" style="margin:0">
+          <label>Generated message — you can edit it</label>
+          <textarea id="aiGeneratedMessage" rows="6">${esc(lastAIMessage)}</textarea>
+        </div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn green" onclick="sendAIGeneratedWhatsApp()">💬 WhatsApp</button>
+          <button class="btn primary" onclick="sendAIGeneratedSMS()">✉️ SMS</button>
+        </div>`;
+    } else {
+      result.textContent = answer;
+    }
   } catch (error) {
     console.error('AI error:', error);
     result.innerHTML = `<b>AI is not connected yet.</b><br>${esc(error.message)}<br><br>After the Firebase AI function is deployed, this button will work.`;
@@ -786,8 +802,34 @@ window.askAI = () => {
 window.generateAIMessage = () => {
   const purpose = document.querySelector('#aiMessagePurpose')?.value.trim() || 'A friendly customer follow-up';
   const selected = customers.filter(x => selectedIds.has(x.id));
-  if (!selected.length) return alert('Select at least one customer first, then generate a message.');
-  callAI(`Create a short, polite WhatsApp/SMS message for this purpose: ${purpose}. Make it suitable for the selected customer(s) in a steel, cement and paint retail business. Do not invent prices, stock, dates or promises.`, 'message', selected);
+  if (!selected.length) return alert('Select one customer first, then generate a personalized message.');
+  if (selected.length > 1) return alert('For a personalized AI message, select one customer at a time. You can still use Bulk SMS for the same message to many customers.');
+  lastAIRecipient = selected[0];
+  callAI(`Create a short, polite WhatsApp/SMS message for ${selected[0].name || 'the customer'}. Purpose: ${purpose}. Personalize it using the customer's site, requirement, brands and follow-up information when available. Keep it natural for a steel, cement and paint retail business. Do not invent prices, stock, dates or promises. Return only the message text.`, 'message', selected);
+};
+
+function getEditedAIMessage() {
+  const el = document.querySelector('#aiGeneratedMessage');
+  const message = (el?.value || lastAIMessage || '').trim();
+  if (el) lastAIMessage = message;
+  if (!message) { alert('Generate a message first.'); return ''; }
+  return message;
+}
+
+window.sendAIGeneratedWhatsApp = () => {
+  const message = getEditedAIMessage();
+  if (!message || !lastAIRecipient) return;
+  const phone = String(lastAIRecipient.phone || '').replace(/\D/g, '');
+  if (!phone) return alert('This customer does not have a phone number.');
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+};
+
+window.sendAIGeneratedSMS = () => {
+  const message = getEditedAIMessage();
+  if (!message || !lastAIRecipient) return;
+  const phone = String(lastAIRecipient.phone || '').replace(/\D/g, '');
+  if (!phone) return alert('This customer does not have a phone number.');
+  window.location.href = `sms:${phone}?body=${encodeURIComponent(message)}`;
 };
 
 window.openBulk = () => {
