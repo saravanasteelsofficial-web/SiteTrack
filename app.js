@@ -5,11 +5,6 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 
 import {
-  getAuth,
-  signInAnonymously
-} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
-
-import {
   getFirestore,
   collection,
   addDoc,
@@ -26,20 +21,16 @@ let filter = 'all';
 let query = '';
 let editing = null;
 let selectedIds = new Set();
-let lastAIMessage = '';
-let lastAIRecipient = null;
-const AI_FUNCTION_URL = 'https://us-central1-sitetrack-24731.cloudfunctions.net/aiAssistant';
+let lastMessage = '';
+let lastMessageRecipient = null;
 
 const app = document.querySelector('#app');
 
 let db = null;
 let customersRef = null;
-let auth = null;
 
 if (CLOUD_ENABLED) {
   const firebaseApp = initializeApp(FIREBASE_CONFIG);
-  auth = getAuth(firebaseApp);
-  signInAnonymously(auth).catch(error => console.warn('Anonymous sign-in unavailable:', error));
   db = getFirestore(firebaseApp);
   customersRef = collection(db, 'customers');
 
@@ -212,7 +203,7 @@ function render() {
             <b>Customer tools</b>
             <span class="muted">${selectedIds.size} selected</span>
           </div>
-          <button class="btn" onclick="openAI()">🤖 AI Assistant</button>
+          <button class="btn" onclick="openMessageGenerator()">✉️ Message Generator</button>
         </div>
         <div class="actions">
           <button class="btn" onclick="selectVisible()">☑️ Select All</button>
@@ -726,108 +717,143 @@ window.exportSelected = (format = 'xlsx') => {
   }
 };
 
-window.openAI = () => {
+window.openMessageGenerator = () => {
   app.insertAdjacentHTML('beforeend', `
     <div class="modal" id="modal">
       <div class="sheet">
-        <h2>🤖 AI Customer Assistant</h2>
-        <p class="muted">Ask about your customers, follow-ups, requirements or site progress.</p>
+        <h2>✉️ Customer Message Generator</h2>
+        <p class="muted">Create a ready-to-send message from the customer's saved details. Works without any AI service or paid add-on.</p>
+
         <div class="field">
-          <label>Ask AI</label>
-          <textarea id="aiPrompt" placeholder="Example: Which customers need follow-up today?\nExample: Summarize my active customers with steel requirements."></textarea>
+          <label>Message type</label>
+          <select id="messageType">
+            <option value="followup">📅 Follow-up</option>
+            <option value="requirement">🧾 Requirement enquiry</option>
+            <option value="site">🏗️ Site progress</option>
+            <option value="steel">🔩 Steel enquiry</option>
+            <option value="cement">🧱 Cement enquiry</option>
+            <option value="paint">🎨 Paint enquiry</option>
+            <option value="custom">✍️ Custom</option>
+          </select>
         </div>
+
         <div class="field">
-          <label>Or generate a message for selected customers</label>
-          <input id="aiMessagePurpose" placeholder="Example: Follow-up about steel requirement">
+          <label>Custom purpose / extra details (optional)</label>
+          <input id="messageExtra" placeholder="Example: Ask about tomorrow's delivery requirement">
         </div>
-        <div id="aiResult" class="ai-result muted">AI results will appear here.</div>
+
+        <div class="field">
+          <label>Selected customer</label>
+          <div id="messageCustomer" class="card muted">Select one customer first.</div>
+        </div>
+
+        <div id="messageResult" class="message-result muted">Your message will appear here.</div>
+
         <div class="sheet-actions">
           <button class="btn" onclick="closeModal()">Close</button>
-          <button class="btn" onclick="generateAIMessage()">✍️ Generate Message</button>
-          <button class="btn primary" onclick="askAI()">Ask AI</button>
+          <button class="btn" onclick="generateNormalMessage()">Generate Message</button>
+          <button class="btn primary" onclick="generateNormalMessage(true)">Generate & Show</button>
         </div>
       </div>
     </div>
   `);
+
+  const selected = customers.filter(x => selectedIds.has(x.id));
+  const target = selected.length === 1 ? selected[0] : null;
+  const box = document.querySelector('#messageCustomer');
+  if (target) {
+    lastMessageRecipient = target;
+    box.innerHTML = `<b>${esc(target.name || 'Customer')}</b><br>${esc(target.phone || '')}${target.site ? ' • ' + esc(target.site) : ''}`;
+  } else if (selected.length > 1) {
+    box.textContent = 'Please keep one customer selected for a personalized message.';
+  }
 };
 
-function aiSafeCustomers(list) {
-  return list.map(x => ({
-    name: x.name || '', site: x.site || '', status: x.status || '',
-    stage: x.stage || '', followup: x.followup || '', steel: x.steel || '',
-    cement: x.cement || '', paint: x.paint || '', requirement: x.requirement || '', notes: x.notes || ''
-  }));
-}
+function buildNormalMessage(customer, type, extra = '') {
+  const name = customer.name || 'Customer';
+  const site = customer.site || 'your site';
+  const stage = customer.stage || '';
+  const req = customer.requirement || '';
+  const follow = customer.followup || '';
+  const steel = customer.steel || '';
+  const cement = customer.cement || '';
+  const paint = customer.paint || '';
+  const suffix = extra ? ` ${extra.trim()}` : '';
 
-async function callAI(prompt, mode = 'assistant', customerData = customers) {
-  const result = document.querySelector('#aiResult');
-  if (!result) return;
-  result.textContent = 'Thinking…';
-  try {
-    const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
-    if (!token) throw new Error('AI sign-in is not ready. Please enable Anonymous sign-in in Firebase Authentication.');
-    const response = await fetch(AI_FUNCTION_URL, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ mode, prompt, customers: aiSafeCustomers(customerData) })
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'AI request failed');
-    const answer = data.answer || 'No answer returned.';
-    if (mode === 'message') {
-      lastAIMessage = answer.trim();
-      result.innerHTML = `
-        <div class="field" style="margin:0">
-          <label>Generated message — you can edit it</label>
-          <textarea id="aiGeneratedMessage" rows="6">${esc(lastAIMessage)}</textarea>
-        </div>
-        <div class="actions" style="margin-top:10px">
-          <button class="btn green" onclick="sendAIGeneratedWhatsApp()">💬 WhatsApp</button>
-          <button class="btn primary" onclick="sendAIGeneratedSMS()">✉️ SMS</button>
-        </div>`;
-    } else {
-      result.textContent = answer;
-    }
-  } catch (error) {
-    console.error('AI error:', error);
-    result.innerHTML = `<b>AI is not connected yet.</b><br>${esc(error.message)}<br><br>After the Firebase AI function is deployed, this button will work.`;
+  switch (type) {
+    case 'followup':
+      return `Dear ${name}, greetings from Saravana Steel Company. This is a friendly follow-up regarding ${site}${follow ? `, scheduled for ${follow}` : ''}. Please let us know your current requirement. Thank you.${suffix}`;
+    case 'requirement':
+      return `Dear ${name}, greetings from Saravana Steel Company. We are checking on your material requirement for ${site}. ${req ? `Our notes mention: ${req}. ` : ''}Please share any updated requirement for steel, cement or paint. Thank you.${suffix}`;
+    case 'site':
+      return `Dear ${name}, greetings from Saravana Steel Company. We are following up on the progress of ${site}${stage ? `, currently noted at ${stage}` : ''}. Please let us know if you need any materials or a quotation. Thank you.${suffix}`;
+    case 'steel':
+      return `Dear ${name}, greetings from Saravana Steel Company. We are checking whether you have any steel requirement for ${site}${steel ? ` (brand noted: ${steel})` : ''}. Please send the required sizes and quantity. Thank you.${suffix}`;
+    case 'cement':
+      return `Dear ${name}, greetings from Saravana Steel Company. We are checking your cement requirement for ${site}${cement ? ` (brand noted: ${cement})` : ''}. Please share the required quantity and delivery requirement. Thank you.${suffix}`;
+    case 'paint':
+      return `Dear ${name}, greetings from Saravana Steel Company. We are checking your paint requirement for ${site}${paint ? ` (brand noted: ${paint})` : ''}. Please share the paint type, shade and quantity required. Thank you.${suffix}`;
+    default:
+      return `Dear ${name}, greetings from Saravana Steel Company. We are following up regarding ${site}. Please let us know your current requirement. Thank you.${suffix}`;
   }
 }
 
-window.askAI = () => {
-  const prompt = document.querySelector('#aiPrompt')?.value.trim();
-  if (!prompt) return alert('Please enter a question for AI.');
-  callAI(prompt, 'assistant');
-};
-
-window.generateAIMessage = () => {
-  const purpose = document.querySelector('#aiMessagePurpose')?.value.trim() || 'A friendly customer follow-up';
+window.generateNormalMessage = (showOnly = false) => {
   const selected = customers.filter(x => selectedIds.has(x.id));
-  if (!selected.length) return alert('Select one customer first, then generate a personalized message.');
-  if (selected.length > 1) return alert('For a personalized AI message, select one customer at a time. You can still use Bulk SMS for the same message to many customers.');
-  lastAIRecipient = selected[0];
-  callAI(`Create a short, polite WhatsApp/SMS message for ${selected[0].name || 'the customer'}. Purpose: ${purpose}. Personalize it using the customer's site, requirement, brands and follow-up information when available. Keep it natural for a steel, cement and paint retail business. Do not invent prices, stock, dates or promises. Return only the message text.`, 'message', selected);
+  if (!selected.length) return alert('Select one customer first, then open Message Generator.');
+  if (selected.length > 1) return alert('For a personalized message, select one customer at a time.');
+
+  lastMessageRecipient = selected[0];
+  const type = document.querySelector('#messageType')?.value || 'followup';
+  const extra = document.querySelector('#messageExtra')?.value || '';
+  lastMessage = buildNormalMessage(lastMessageRecipient, type, extra);
+
+  const result = document.querySelector('#messageResult');
+  if (!result) return;
+  result.innerHTML = `
+    <div class="field" style="margin:0">
+      <label>Message — you can edit it</label>
+      <textarea id="generatedMessage" rows="7">${esc(lastMessage)}</textarea>
+    </div>
+    <div class="actions" style="margin-top:10px">
+      <button class="btn" onclick="copyGeneratedMessage()">📋 Copy</button>
+      <button class="btn green" onclick="sendGeneratedWhatsApp()">💬 WhatsApp</button>
+      <button class="btn primary" onclick="sendGeneratedSMS()">✉️ SMS</button>
+    </div>`;
 };
 
-function getEditedAIMessage() {
-  const el = document.querySelector('#aiGeneratedMessage');
-  const message = (el?.value || lastAIMessage || '').trim();
-  if (el) lastAIMessage = message;
+function getEditedMessage() {
+  const el = document.querySelector('#generatedMessage');
+  const message = (el?.value || lastMessage || '').trim();
+  if (el) lastMessage = message;
   if (!message) { alert('Generate a message first.'); return ''; }
   return message;
 }
 
-window.sendAIGeneratedWhatsApp = () => {
-  const message = getEditedAIMessage();
-  if (!message || !lastAIRecipient) return;
-  const phone = String(lastAIRecipient.phone || '').replace(/\D/g, '');
-  if (!phone) return alert('This customer does not have a phone number.');
-  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
+window.copyGeneratedMessage = async () => {
+  const message = getEditedMessage();
+  if (!message) return;
+  try {
+    await navigator.clipboard.writeText(message);
+    toast('Message copied');
+  } catch (e) {
+    alert('Copy is not available on this device. You can select and copy the message manually.');
+  }
 };
 
-window.sendAIGeneratedSMS = () => {
-  const message = getEditedAIMessage();
-  if (!message || !lastAIRecipient) return;
-  const phone = String(lastAIRecipient.phone || '').replace(/\D/g, '');
+window.sendGeneratedWhatsApp = () => {
+  const message = getEditedMessage();
+  if (!message || !lastMessageRecipient) return;
+  const phone = String(lastMessageRecipient.phone || '').replace(/\D/g, '');
+  if (!phone) return alert('This customer does not have a phone number.');
+  const normalized = phone.startsWith('91') ? phone : `91${phone}`;
+  window.open(`https://wa.me/${normalized}?text=${encodeURIComponent(message)}`, '_blank');
+};
+
+window.sendGeneratedSMS = () => {
+  const message = getEditedMessage();
+  if (!message || !lastMessageRecipient) return;
+  const phone = String(lastMessageRecipient.phone || '').replace(/\D/g, '');
   if (!phone) return alert('This customer does not have a phone number.');
   window.location.href = `sms:${phone}?body=${encodeURIComponent(message)}`;
 };

@@ -1,4 +1,4 @@
-const CACHE = 'sitetrack-v3';
+const CACHE = 'sitetrack-v4';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
