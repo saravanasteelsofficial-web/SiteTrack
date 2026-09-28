@@ -5,6 +5,11 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 
 import {
+  getAuth,
+  signInAnonymously
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+
+import {
   getFirestore,
   collection,
   addDoc,
@@ -20,14 +25,19 @@ let customers = [];
 let filter = 'all';
 let query = '';
 let editing = null;
+let selectedIds = new Set();
+const AI_FUNCTION_URL = 'https://us-central1-sitetrack-24731.cloudfunctions.net/aiAssistant';
 
 const app = document.querySelector('#app');
 
 let db = null;
 let customersRef = null;
+let auth = null;
 
 if (CLOUD_ENABLED) {
   const firebaseApp = initializeApp(FIREBASE_CONFIG);
+  auth = getAuth(firebaseApp);
+  signInAnonymously(auth).catch(error => console.warn('Anonymous sign-in unavailable:', error));
   db = getFirestore(firebaseApp);
   customersRef = collection(db, 'customers');
 
@@ -194,6 +204,22 @@ function render() {
 
       </div>
 
+      <section class="tools card">
+        <div class="tool-head">
+          <div>
+            <b>Customer tools</b>
+            <span class="muted">${selectedIds.size} selected</span>
+          </div>
+          <button class="btn" onclick="openAI()">🤖 AI Assistant</button>
+        </div>
+        <div class="actions">
+          <button class="btn" onclick="selectVisible()">☑️ Select All</button>
+          <button class="btn" onclick="clearSelected()">Clear</button>
+          <button class="btn primary" onclick="exportSelected('xlsx')">📊 Export Excel</button>
+          <button class="btn" onclick="exportSelected('csv')">📄 Export CSV</button>
+        </div>
+      </section>
+
       <section class="list">
         ${
           rows.length
@@ -247,12 +273,15 @@ function card(x) {
 
       <div class="row">
 
-        <div>
+        <div class="name-wrap">
+          <input class="customer-pick" type="checkbox" ${selectedIds.has(x.id) ? 'checked' : ''} onchange="toggleSelected('${esc(x.id)}', this.checked)">
+          <div>
           <div class="name">${esc(x.name)}</div>
 
           <div class="muted">
             ${esc(x.phone)}
             ${x.site ? '• ' + esc(x.site) : ''}
+          </div>
           </div>
         </div>
 
@@ -616,6 +645,150 @@ window.deleteCustomer = async (id) => {
   }
 };
 
+
+
+window.toggleSelected = (id, checked) => {
+  if (checked) selectedIds.add(id);
+  else selectedIds.delete(id);
+  render();
+};
+
+window.selectVisible = () => {
+  const visible = getVisibleCustomers();
+  visible.forEach(x => selectedIds.add(x.id));
+  render();
+};
+
+window.clearSelected = () => {
+  selectedIds.clear();
+  render();
+};
+
+function getVisibleCustomers() {
+  const today = new Date().toISOString().slice(0, 10);
+  return customers.filter(x => {
+    const status = String(x.status || '').toLowerCase();
+    const matchesFilter =
+      filter === 'all' ||
+      status === filter ||
+      (filter === 'today' && x.followup === today) ||
+      (filter === 'overdue' && x.followup && x.followup < today);
+    const q = query.toLowerCase();
+    const matchesQuery = !q || [x.name,x.phone,x.address,x.site,x.steel,x.cement,x.paint,x.stage,x.requirement]
+      .some(v => String(v || '').toLowerCase().includes(q));
+    return matchesFilter && matchesQuery;
+  });
+}
+
+function exportRows() {
+  return customers.filter(x => selectedIds.has(x.id)).map(x => ({
+    'Customer Name': x.name || '',
+    'Mobile': x.phone || '',
+    'Site Name': x.site || '',
+    'Status': x.status || '',
+    'Address / Location': x.address || '',
+    'Construction Stage': x.stage || '',
+    'Follow-up Date': x.followup || '',
+    'Steel Brand': x.steel || '',
+    'Cement Brand': x.cement || '',
+    'Paint Brand': x.paint || '',
+    'Requirement': x.requirement || '',
+    'Notes': x.notes || ''
+  }));
+}
+
+window.exportSelected = (format = 'xlsx') => {
+  const rows = exportRows();
+  if (!rows.length) return alert('Please select at least one customer to export.');
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (format === 'xlsx') {
+    if (!window.XLSX) return alert('Excel export library is not loaded. Please check your internet connection.');
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+    XLSX.writeFile(wb, `SiteTrack-customers-${stamp}.xlsx`);
+    toast(`${rows.length} customer(s) exported to Excel`);
+  } else {
+    const headers = Object.keys(rows[0]);
+    const csv = [headers, ...rows.map(r => headers.map(h => r[h]))]
+      .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `SiteTrack-customers-${stamp}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    toast(`${rows.length} customer(s) exported to CSV`);
+  }
+};
+
+window.openAI = () => {
+  app.insertAdjacentHTML('beforeend', `
+    <div class="modal" id="modal">
+      <div class="sheet">
+        <h2>🤖 AI Customer Assistant</h2>
+        <p class="muted">Ask about your customers, follow-ups, requirements or site progress.</p>
+        <div class="field">
+          <label>Ask AI</label>
+          <textarea id="aiPrompt" placeholder="Example: Which customers need follow-up today?\nExample: Summarize my active customers with steel requirements."></textarea>
+        </div>
+        <div class="field">
+          <label>Or generate a message for selected customers</label>
+          <input id="aiMessagePurpose" placeholder="Example: Follow-up about steel requirement">
+        </div>
+        <div id="aiResult" class="ai-result muted">AI results will appear here.</div>
+        <div class="sheet-actions">
+          <button class="btn" onclick="closeModal()">Close</button>
+          <button class="btn" onclick="generateAIMessage()">✍️ Generate Message</button>
+          <button class="btn primary" onclick="askAI()">Ask AI</button>
+        </div>
+      </div>
+    </div>
+  `);
+};
+
+function aiSafeCustomers(list) {
+  return list.map(x => ({
+    name: x.name || '', site: x.site || '', status: x.status || '',
+    stage: x.stage || '', followup: x.followup || '', steel: x.steel || '',
+    cement: x.cement || '', paint: x.paint || '', requirement: x.requirement || '', notes: x.notes || ''
+  }));
+}
+
+async function callAI(prompt, mode = 'assistant', customerData = customers) {
+  const result = document.querySelector('#aiResult');
+  if (!result) return;
+  result.textContent = 'Thinking…';
+  try {
+    const token = auth?.currentUser ? await auth.currentUser.getIdToken() : null;
+    if (!token) throw new Error('AI sign-in is not ready. Please enable Anonymous sign-in in Firebase Authentication.');
+    const response = await fetch(AI_FUNCTION_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ mode, prompt, customers: aiSafeCustomers(customerData) })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'AI request failed');
+    result.textContent = data.answer || 'No answer returned.';
+  } catch (error) {
+    console.error('AI error:', error);
+    result.innerHTML = `<b>AI is not connected yet.</b><br>${esc(error.message)}<br><br>After the Firebase AI function is deployed, this button will work.`;
+  }
+}
+
+window.askAI = () => {
+  const prompt = document.querySelector('#aiPrompt')?.value.trim();
+  if (!prompt) return alert('Please enter a question for AI.');
+  callAI(prompt, 'assistant');
+};
+
+window.generateAIMessage = () => {
+  const purpose = document.querySelector('#aiMessagePurpose')?.value.trim() || 'A friendly customer follow-up';
+  const selected = customers.filter(x => selectedIds.has(x.id));
+  if (!selected.length) return alert('Select at least one customer first, then generate a message.');
+  callAI(`Create a short, polite WhatsApp/SMS message for this purpose: ${purpose}. Make it suitable for the selected customer(s) in a steel, cement and paint retail business. Do not invent prices, stock, dates or promises.`, 'message', selected);
+};
 
 window.openBulk = () => {
 
