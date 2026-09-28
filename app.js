@@ -9,6 +9,7 @@ import {
   collection,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   onSnapshot
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
@@ -308,6 +309,11 @@ function card(x) {
           Edit
         </button>
 
+        <button class="btn"
+          onclick="deleteCustomer('${esc(x.id)}')">
+          🗑️ Delete
+        </button>
+
       </div>
 
     </article>
@@ -541,7 +547,7 @@ window.saveCustomer = async () => {
     }
 
     closeModal();
-    toast('Customer saved to cloud');
+    toast('Customer saved');
 
   } catch (error) {
 
@@ -552,6 +558,64 @@ window.saveCustomer = async () => {
     );
   }
 };
+
+
+/* ================================
+   DELETE CUSTOMER
+   ================================ */
+
+window.deleteCustomer = async (id) => {
+
+  const customer = customers.find(
+    x => x.id === id
+  );
+
+  if (!customer) {
+    return alert('Customer not found.');
+  }
+
+  const confirmed = confirm(
+    `Delete "${customer.name}" permanently?\n\n` +
+    `All customer data will be deleted from the cloud database.\n\n` +
+    `This action cannot be undone.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+
+    if (CLOUD_ENABLED && db) {
+
+      await deleteDoc(
+        doc(db, 'customers', id)
+      );
+
+      toast('Customer permanently deleted');
+
+    } else {
+
+      customers = customers.filter(
+        x => x.id !== id
+      );
+
+      saveLocal();
+      render();
+
+      toast('Customer deleted');
+
+    }
+
+  } catch (error) {
+
+    console.error('Delete error:', error);
+
+    alert(
+      'Could not delete customer from Firebase. ' +
+      'Please check your Firestore rules.'
+    );
+  }
+};
+
 
 window.openBulk = () => {
 
