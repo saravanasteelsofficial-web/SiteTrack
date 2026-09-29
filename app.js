@@ -96,6 +96,10 @@ if (CLOUD_ENABLED) {
           status: String(x.status || 'active').toLowerCase(),
           address: x.address || '',
           stage: x.stage || x.siteLevel || '',
+
+          /* CUSTOMER TYPE */
+          customerType: x.customerType || '',
+
           followup: x.followup || x.followUpDate || '',
           steel: x.steel || x.brand || '',
           cement: x.cement || '',
@@ -138,6 +142,7 @@ if (CLOUD_ENABLED) {
 
   customers = customers.map(x => ({
     ...x,
+    customerType: x.customerType || '',
     calledAt: x.calledAt || ''
   }));
 
@@ -183,6 +188,7 @@ function getVisibleCustomers() {
         customer.phone,
         customer.address,
         customer.site,
+        customer.customerType,
         customer.steel,
         customer.cement,
         customer.paint,
@@ -520,6 +526,34 @@ function card(customer) {
               ${esc(customer.name)}
             </div>
 
+            ${
+              customer.customerType
+                ? `
+                  <div
+                    style="
+                      margin-top:3px;
+                      font-size:12px;
+                      font-weight:600;
+                      opacity:.75;
+                    "
+                  >
+                    ${
+                      customer.customerType === 'House Owner'
+                        ? '🏠'
+                        : customer.customerType === 'Mason'
+                          ? '🧱'
+                          : customer.customerType === 'Painter'
+                            ? '🎨'
+                            : customer.customerType === 'Engineer'
+                              ? '📐'
+                              : '👤'
+                    }
+                    ${esc(customer.customerType)}
+                  </div>
+                `
+                : ''
+            }
+
             <div class="muted">
 
               ${esc(customer.phone)}
@@ -830,6 +864,54 @@ window.openForm = (id = null) => {
           </div>
 
 
+          <!-- CUSTOMER TYPE -->
+
+          <div class="field">
+
+            <label>Customer Type</label>
+
+            <select id="f_customerType">
+
+              <option
+                value=""
+                ${!x.customerType ? 'selected' : ''}
+              >
+                Select type
+              </option>
+
+              <option
+                value="House Owner"
+                ${x.customerType === 'House Owner' ? 'selected' : ''}
+              >
+                🏠 House Owner
+              </option>
+
+              <option
+                value="Mason"
+                ${x.customerType === 'Mason' ? 'selected' : ''}
+              >
+                🧱 Mason
+              </option>
+
+              <option
+                value="Painter"
+                ${x.customerType === 'Painter' ? 'selected' : ''}
+              >
+                🎨 Painter
+              </option>
+
+              <option
+                value="Engineer"
+                ${x.customerType === 'Engineer' ? 'selected' : ''}
+              >
+                📐 Engineer
+              </option>
+
+            </select>
+
+          </div>
+
+
           <div class="field">
 
             <label>Status</label>
@@ -1038,6 +1120,10 @@ window.saveCustomer = async () => {
     address: get('#f_address'),
     stage: get('#f_stage'),
     siteLevel: get('#f_stage'),
+
+    /* CUSTOMER TYPE */
+    customerType: get('#f_customerType'),
+
     followup: get('#f_followup'),
     followUpDate: get('#f_followup'),
     steel: get('#f_steel'),
@@ -1218,6 +1304,7 @@ function exportRows() {
       'Customer Name': customer.name || '',
       'Mobile': customer.phone || '',
       'Site Name': customer.site || '',
+      'Customer Type': customer.customerType || '',
       'Status': customer.status || '',
       'Address / Location': customer.address || '',
       'Construction Stage': customer.stage || '',
@@ -1312,6 +1399,7 @@ window.exportSelected = format => {
     '#',
     'Customer',
     'Mobile',
+    'Type',
     'Site',
     'Status',
     'Stage',
@@ -1327,6 +1415,7 @@ window.exportSelected = format => {
     index + 1,
     row['Customer Name'],
     row['Mobile'],
+    row['Customer Type'],
     row['Site Name'],
     row['Status'],
     row['Construction Stage'],
@@ -1390,23 +1479,24 @@ window.exportSelected = format => {
 
     columnStyles: {
 
-      0: { cellWidth: 8 },
-      1: { cellWidth: 32 },
-      2: { cellWidth: 25 },
-      3: { cellWidth: 28 },
-      4: { cellWidth: 17 },
-      5: { cellWidth: 25 },
-      6: { cellWidth: 23 },
-      7: { cellWidth: 25 },
-      8: { cellWidth: 25 },
-      9: { cellWidth: 25 },
-      10: { cellWidth: 15 }
+      0: { cellWidth: 7 },
+      1: { cellWidth: 28 },
+      2: { cellWidth: 22 },
+      3: { cellWidth: 23 },
+      4: { cellWidth: 25 },
+      5: { cellWidth: 16 },
+      6: { cellWidth: 22 },
+      7: { cellWidth: 21 },
+      8: { cellWidth: 23 },
+      9: { cellWidth: 23 },
+      10: { cellWidth: 23 },
+      11: { cellWidth: 14 }
 
     },
 
     margin: {
-      left: 8,
-      right: 8
+      left: 5,
+      right: 5
     },
 
     didDrawPage: data => {
