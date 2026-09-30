@@ -46,26 +46,48 @@ const esc = value =>
     }[char])
   );
 
+
+function normalizeSearch(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+
 function getToday() {
   return new Date().toISOString().slice(0, 10);
 }
+
 
 function wasCalledToday(customer) {
   return !!customer.calledAt &&
     String(customer.calledAt).slice(0, 10) === getToday();
 }
 
+
 function saveLocal() {
-  localStorage.setItem(KEY, JSON.stringify(customers));
+  localStorage.setItem(
+    KEY,
+    JSON.stringify(customers)
+  );
 }
 
+
 function toast(message) {
-  const element = document.createElement('div');
+
+  const element =
+    document.createElement('div');
+
   element.className = 'toast';
   element.textContent = message;
+
   document.body.append(element);
 
-  setTimeout(() => element.remove(), 1800);
+  setTimeout(
+    () => element.remove(),
+    1800
+  );
 }
 
 
@@ -75,49 +97,98 @@ function toast(message) {
 
 if (CLOUD_ENABLED) {
 
-  const firebaseApp = initializeApp(FIREBASE_CONFIG);
+  const firebaseApp =
+    initializeApp(FIREBASE_CONFIG);
 
-  db = getFirestore(firebaseApp);
-  customersRef = collection(db, 'customers');
+  db =
+    getFirestore(firebaseApp);
+
+  customersRef =
+    collection(db, 'customers');
 
   onSnapshot(
     customersRef,
+
     snapshot => {
 
-      customers = snapshot.docs.map(d => {
+      customers =
+        snapshot.docs.map(d => {
 
-        const x = d.data();
+          const x = d.data();
 
-        return {
-          id: d.id,
-          name: x.name || '',
-          phone: x.phone || x.whatsapp || '',
-          site: x.site || '',
-          status: String(x.status || 'active').toLowerCase(),
-          address: x.address || '',
-          stage: x.stage || x.siteLevel || '',
+          return {
 
-          /* CUSTOMER TYPE */
-          customerType: x.customerType || '',
+            id: d.id,
 
-          followup: x.followup || x.followUpDate || '',
-          steel: x.steel || x.brand || '',
-          cement: x.cement || '',
-          paint: x.paint || '',
-          requirement: x.requirement || '',
-          notes: x.notes || '',
-          updatedAt: x.updatedAt || '',
-          calledAt: x.calledAt || ''
-        };
+            name:
+              x.name || '',
 
-      });
+            phone:
+              x.phone ||
+              x.whatsapp ||
+              '',
+
+            site:
+              x.site || '',
+
+            status:
+              String(
+                x.status || 'active'
+              ).toLowerCase(),
+
+            address:
+              x.address || '',
+
+            stage:
+              x.stage ||
+              x.siteLevel ||
+              '',
+
+            customerType:
+              x.customerType || '',
+
+            followup:
+              x.followup ||
+              x.followUpDate ||
+              '',
+
+            steel:
+              x.steel ||
+              x.brand ||
+              '',
+
+            cement:
+              x.cement || '',
+
+            paint:
+              x.paint || '',
+
+            requirement:
+              x.requirement || '',
+
+            notes:
+              x.notes || '',
+
+            updatedAt:
+              x.updatedAt || '',
+
+            calledAt:
+              x.calledAt || ''
+
+          };
+
+        });
 
       render();
 
     },
+
     error => {
 
-      console.error('Firestore error:', error);
+      console.error(
+        'Firestore error:',
+        error
+      );
 
       alert(
         'Cloud database connection error. Please check Firebase settings.'
@@ -130,9 +201,10 @@ if (CLOUD_ENABLED) {
 
   try {
 
-    customers = JSON.parse(
-      localStorage.getItem(KEY) || '[]'
-    );
+    customers =
+      JSON.parse(
+        localStorage.getItem(KEY) || '[]'
+      );
 
   } catch {
 
@@ -140,11 +212,18 @@ if (CLOUD_ENABLED) {
 
   }
 
-  customers = customers.map(x => ({
-    ...x,
-    customerType: x.customerType || '',
-    calledAt: x.calledAt || ''
-  }));
+  customers =
+    customers.map(x => ({
+
+      ...x,
+
+      customerType:
+        x.customerType || '',
+
+      calledAt:
+        x.calledAt || ''
+
+    }));
 
 }
 
@@ -155,53 +234,110 @@ if (CLOUD_ENABLED) {
 
 function getVisibleCustomers() {
 
-  const today = getToday();
-  const q = query.toLowerCase().trim();
+  const today =
+    getToday();
+
+  const q =
+    normalizeSearch(query);
 
   return customers
+
     .filter(customer => {
 
       const status =
-        String(customer.status || '').toLowerCase();
+        normalizeSearch(
+          customer.status
+        );
 
       const called =
         wasCalledToday(customer);
 
       const matchesFilter =
+
         filter === 'all' ||
+
         status === filter ||
-        (filter === 'today' && customer.followup === today) ||
+
+        (
+          filter === 'today' &&
+          customer.followup === today
+        ) ||
+
         (
           filter === 'overdue' &&
           customer.followup &&
           customer.followup < today
         ) ||
-        (filter === 'called' && called) ||
-        (filter === 'notcalled' && !called);
 
-      if (!matchesFilter) return false;
+        (
+          filter === 'called' &&
+          called
+        ) ||
 
-      if (!q) return true;
+        (
+          filter === 'notcalled' &&
+          !called
+        );
 
-      return [
+      if (!matchesFilter) {
+        return false;
+      }
+
+      /*
+       * No search text
+       */
+      if (!q) {
+        return true;
+      }
+
+      /*
+       * Search all important customer fields
+       */
+      const searchableText = [
+
         customer.name,
+
         customer.phone,
-        customer.address,
+
+        customer.whatsapp,
+
         customer.site,
+
+        customer.address,
+
         customer.customerType,
-        customer.steel,
-        customer.cement,
-        customer.paint,
+
+        customer.status,
+
         customer.stage,
-        customer.requirement
-      ].some(value =>
-        String(value || '').toLowerCase().includes(q)
-      );
+
+        customer.steel,
+
+        customer.cement,
+
+        customer.paint,
+
+        customer.requirement,
+
+        customer.notes,
+
+        customer.followup
+
+      ]
+        .map(normalizeSearch)
+        .join(' ');
+
+      return searchableText.includes(q);
 
     })
+
     .sort((a, b) =>
-      String(a.name || '').localeCompare(
-        String(b.name || '')
+      String(
+        a.name || ''
+      ).localeCompare(
+        String(
+          b.name || ''
+        )
       )
     );
 }
@@ -213,13 +349,17 @@ function getVisibleCustomers() {
 
 function render() {
 
-  const today = getToday();
+  const today =
+    getToday();
 
-  const due = customers.filter(
-    customer => customer.followup === today
-  ).length;
+  const due =
+    customers.filter(
+      customer =>
+        customer.followup === today
+    ).length;
 
-  const rows = getVisibleCustomers();
+  const rows =
+    getVisibleCustomers();
 
   app.innerHTML = `
 
@@ -246,8 +386,6 @@ function render() {
             gap:8px;
           "
         >
-
-          <!-- THREE DOT MENU -->
 
           <div style="position:relative">
 
@@ -346,11 +484,14 @@ function render() {
 
       </div>
 
+
       <div class="search">
 
         <input
           id="q"
+          type="search"
           value="${esc(query)}"
+          autocomplete="off"
           placeholder="Search customer, phone, site, area, brand…"
         >
 
@@ -376,18 +517,18 @@ function render() {
           ['called', 'Called Today'],
           ['notcalled', 'Not Called']
         ].map(([key, label]) => `
+
           <button
             class="chip ${filter === key ? 'active' : ''}"
             onclick="setFilter('${key}')"
           >
             ${label}
           </button>
+
         `).join('')}
 
       </div>
 
-
-      <!-- ONLY TWO STATS -->
 
       <div class="stats">
 
@@ -418,8 +559,11 @@ function render() {
 
         ${
           rows.length
+
             ? rows.map(card).join('')
+
             : `
+
               <div class="card empty">
 
                 No customers found.
@@ -434,6 +578,7 @@ function render() {
                 </button>
 
               </div>
+
             `
         }
 
@@ -479,6 +624,7 @@ function render() {
     </nav>
 
   `;
+
 }
 
 
@@ -489,13 +635,17 @@ function render() {
 function card(customer) {
 
   const status =
-    String(customer.status || 'active').toLowerCase();
+    String(
+      customer.status || 'active'
+    ).toLowerCase();
 
   const called =
     wasCalledToday(customer);
 
   const phone =
-    String(customer.phone || '').replace(/\D/g, '');
+    String(
+      customer.phone || ''
+    ).replace(/\D/g, '');
 
   const whatsappNumber =
     phone.replace(/^91/, '');
@@ -511,7 +661,11 @@ function card(customer) {
           <input
             class="customer-pick"
             type="checkbox"
-            ${selectedIds.has(customer.id) ? 'checked' : ''}
+            ${
+              selectedIds.has(customer.id)
+                ? 'checked'
+                : ''
+            }
             onchange="
               toggleSelected(
                 '${esc(customer.id)}',
@@ -529,6 +683,7 @@ function card(customer) {
             ${
               customer.customerType
                 ? `
+
                   <div
                     style="
                       margin-top:3px;
@@ -537,6 +692,7 @@ function card(customer) {
                       opacity:.75;
                     "
                   >
+
                     ${
                       customer.customerType === 'House Owner'
                         ? '🏠'
@@ -548,8 +704,13 @@ function card(customer) {
                               ? '📐'
                               : '👤'
                     }
-                    ${esc(customer.customerType)}
+
+                    ${esc(
+                      customer.customerType
+                    )}
+
                   </div>
+
                 `
                 : ''
             }
@@ -560,7 +721,8 @@ function card(customer) {
 
               ${
                 customer.site
-                  ? ' • ' + esc(customer.site)
+                  ? ' • ' +
+                    esc(customer.site)
                   : ''
               }
 
@@ -585,7 +747,11 @@ function card(customer) {
               opacity:${called ? '.9' : '.65'};
             "
           >
-            ${called ? '✓ Called today' : '○ Not called'}
+            ${
+              called
+                ? '✓ Called today'
+                : '○ Not called'
+            }
           </div>
 
         </div>
@@ -598,11 +764,15 @@ function card(customer) {
         style="margin-top:8px"
       >
 
-        ${esc(customer.address || 'No address')}
+        ${esc(
+          customer.address ||
+          'No address'
+        )}
 
         ${
           customer.stage
-            ? ' • Stage: ' + esc(customer.stage)
+            ? ' • Stage: ' +
+              esc(customer.stage)
             : ''
         }
 
@@ -614,24 +784,37 @@ function card(customer) {
         style="margin-top:5px"
       >
 
-        Steel: ${esc(customer.steel || '—')}
-        · Cement: ${esc(customer.cement || '—')}
-        · Paint: ${esc(customer.paint || '—')}
+        Steel:
+        ${esc(customer.steel || '—')}
+
+        · Cement:
+        ${esc(customer.cement || '—')}
+
+        · Paint:
+        ${esc(customer.paint || '—')}
 
       </div>
 
 
       ${
         customer.followup
+
           ? `
+
             <div
               class="muted"
               style="margin-top:6px"
             >
+
               Follow-up:
-              <b>${esc(customer.followup)}</b>
+              <b>
+                ${esc(customer.followup)}
+              </b>
+
             </div>
+
           `
+
           : ''
       }
 
@@ -640,7 +823,11 @@ function card(customer) {
 
         <button
           class="btn"
-          onclick="callCustomer('${esc(customer.id)}')"
+          onclick="
+            callCustomer(
+              '${esc(customer.id)}'
+            )
+          "
         >
           📞 Call
         </button>
@@ -655,14 +842,22 @@ function card(customer) {
 
         <button
           class="btn"
-          onclick="smsOne('${esc(customer.phone)}')"
+          onclick="
+            smsOne(
+              '${esc(customer.phone)}'
+            )
+          "
         >
           SMS
         </button>
 
         <button
           class="btn"
-          onclick="openForm('${esc(customer.id)}')"
+          onclick="
+            openForm(
+              '${esc(customer.id)}'
+            )
+          "
         >
           Edit
         </button>
@@ -682,19 +877,29 @@ function card(customer) {
 window.callCustomer = async id => {
 
   const customer =
-    customers.find(x => x.id === id);
+    customers.find(
+      x => x.id === id
+    );
 
   if (!customer) {
-    return alert('Customer not found.');
+
+    return alert(
+      'Customer not found.'
+    );
+
   }
 
   const phone =
-    String(customer.phone || '').replace(/\D/g, '');
+    String(
+      customer.phone || ''
+    ).replace(/\D/g, '');
 
   if (!phone) {
+
     return alert(
       'This customer does not have a phone number.'
     );
+
   }
 
   const calledAt =
@@ -702,23 +907,42 @@ window.callCustomer = async id => {
 
   try {
 
-    if (CLOUD_ENABLED && db) {
+    if (
+      CLOUD_ENABLED &&
+      db
+    ) {
 
       await updateDoc(
-        doc(db, 'customers', id),
+
+        doc(
+          db,
+          'customers',
+          id
+        ),
+
         {
           calledAt,
           updatedAt: calledAt
         }
+
       );
 
     } else {
 
-      customers = customers.map(x =>
-        x.id === id
-          ? { ...x, calledAt, updatedAt: calledAt }
-          : x
-      );
+      customers =
+        customers.map(x =>
+
+          x.id === id
+
+            ? {
+                ...x,
+                calledAt,
+                updatedAt: calledAt
+              }
+
+            : x
+
+        );
 
       saveLocal();
       render();
@@ -727,11 +951,16 @@ window.callCustomer = async id => {
 
   } catch (error) {
 
-    console.error('Call tracking error:', error);
+    console.error(
+      'Call tracking error:',
+      error
+    );
 
   }
 
-  window.location.href = `tel:${phone}`;
+  window.location.href =
+    `tel:${phone}`;
+
 };
 
 
@@ -741,16 +970,117 @@ window.callCustomer = async id => {
 
 window.doSearch = () => {
 
+  const input =
+    document.querySelector('#q');
+
   query =
-    document.querySelector('#q')?.value || '';
+    input
+      ? input.value
+      : '';
 
   render();
 
 };
 
+
+/* ================================
+   LIVE SEARCH
+   ================================ */
+
+document.addEventListener(
+  'input',
+  event => {
+
+    const input =
+      event.target;
+
+    if (
+      !input ||
+      input.id !== 'q'
+    ) {
+      return;
+    }
+
+    query =
+      input.value || '';
+
+    clearTimeout(
+      window.__siteTrackSearchTimer
+    );
+
+    window.__siteTrackSearchTimer =
+      setTimeout(() => {
+
+        render();
+
+        const newInput =
+          document.querySelector('#q');
+
+        if (newInput) {
+
+          newInput.focus();
+
+          try {
+
+            const position =
+              Math.min(
+                query.length,
+                newInput.value.length
+              );
+
+            newInput.setSelectionRange(
+              position,
+              position
+            );
+
+          } catch {}
+
+        }
+
+      }, 150);
+
+  }
+);
+
+
+/* ================================
+   SEARCH ON ENTER
+   ================================ */
+
+document.addEventListener(
+  'keydown',
+  event => {
+
+    const input =
+      event.target;
+
+    if (
+      input &&
+      input.id === 'q' &&
+      event.key === 'Enter'
+    ) {
+
+      event.preventDefault();
+
+      query =
+        input.value || '';
+
+      render();
+
+    }
+
+  }
+);
+
+
+/* ================================
+   FILTER
+   ================================ */
+
 window.setFilter = key => {
 
   filter = key;
+
   render();
 
 };
@@ -777,7 +1107,9 @@ window.smsOne = phone => {
 window.toggleToolsMenu = () => {
 
   const menu =
-    document.querySelector('#toolsMenu');
+    document.querySelector(
+      '#toolsMenu'
+    );
 
   if (!menu) return;
 
@@ -788,13 +1120,19 @@ window.toggleToolsMenu = () => {
 
 };
 
+
 window.closeToolsMenu = () => {
 
   const menu =
-    document.querySelector('#toolsMenu');
+    document.querySelector(
+      '#toolsMenu'
+    );
 
   if (menu) {
-    menu.style.display = 'none';
+
+    menu.style.display =
+      'none';
+
   }
 
 };
@@ -808,21 +1146,32 @@ window.openForm = (id = null) => {
 
   editing =
     id
-      ? customers.find(x => x.id === id)
+      ? customers.find(
+          x => x.id === id
+        )
       : null;
 
-  const x = editing || {};
+  const x =
+    editing || {};
 
   app.insertAdjacentHTML(
     'beforeend',
+
     `
 
-    <div class="modal" id="modal">
+    <div
+      class="modal"
+      id="modal"
+    >
 
       <div class="sheet">
 
         <h2>
-          ${editing ? 'Edit Customer' : 'Add Customer'}
+          ${
+            editing
+              ? 'Edit Customer'
+              : 'Add Customer'
+          }
         </h2>
 
         <div class="grid">
@@ -864,45 +1213,71 @@ window.openForm = (id = null) => {
           </div>
 
 
-          <!-- CUSTOMER TYPE -->
-
           <div class="field">
 
-            <label>Customer Type</label>
+            <label>
+              Customer Type
+            </label>
 
-            <select id="f_customerType">
+            <select
+              id="f_customerType"
+            >
 
               <option
                 value=""
-                ${!x.customerType ? 'selected' : ''}
+                ${
+                  !x.customerType
+                    ? 'selected'
+                    : ''
+                }
               >
                 Select type
               </option>
 
               <option
                 value="House Owner"
-                ${x.customerType === 'House Owner' ? 'selected' : ''}
+                ${
+                  x.customerType ===
+                  'House Owner'
+                    ? 'selected'
+                    : ''
+                }
               >
                 🏠 House Owner
               </option>
 
               <option
                 value="Mason"
-                ${x.customerType === 'Mason' ? 'selected' : ''}
+                ${
+                  x.customerType ===
+                  'Mason'
+                    ? 'selected'
+                    : ''
+                }
               >
                 🧱 Mason
               </option>
 
               <option
                 value="Painter"
-                ${x.customerType === 'Painter' ? 'selected' : ''}
+                ${
+                  x.customerType ===
+                  'Painter'
+                    ? 'selected'
+                    : ''
+                }
               >
                 🎨 Painter
               </option>
 
               <option
                 value="Engineer"
-                ${x.customerType === 'Engineer' ? 'selected' : ''}
+                ${
+                  x.customerType ===
+                  'Engineer'
+                    ? 'selected'
+                    : ''
+                }
               >
                 📐 Engineer
               </option>
@@ -920,14 +1295,28 @@ window.openForm = (id = null) => {
 
               <option
                 value="active"
-                ${String(x.status).toLowerCase() !== 'inactive' ? 'selected' : ''}
+                ${
+                  String(
+                    x.status
+                  ).toLowerCase() !==
+                  'inactive'
+                    ? 'selected'
+                    : ''
+                }
               >
                 Active
               </option>
 
               <option
                 value="inactive"
-                ${String(x.status).toLowerCase() === 'inactive' ? 'selected' : ''}
+                ${
+                  String(
+                    x.status
+                  ).toLowerCase() ===
+                  'inactive'
+                    ? 'selected'
+                    : ''
+                }
               >
                 Inactive
               </option>
@@ -939,7 +1328,9 @@ window.openForm = (id = null) => {
 
           <div class="field full">
 
-            <label>Address / Site location</label>
+            <label>
+              Address / Site location
+            </label>
 
             <input
               id="f_address"
@@ -966,7 +1357,9 @@ window.openForm = (id = null) => {
 
           <div class="field">
 
-            <label>Follow-up date</label>
+            <label>
+              Follow-up date
+            </label>
 
             <input
               id="f_followup"
@@ -979,7 +1372,9 @@ window.openForm = (id = null) => {
 
           <div class="field">
 
-            <label>Steel brand</label>
+            <label>
+              Steel brand
+            </label>
 
             <input
               id="f_steel"
@@ -991,7 +1386,9 @@ window.openForm = (id = null) => {
 
           <div class="field">
 
-            <label>Cement brand</label>
+            <label>
+              Cement brand
+            </label>
 
             <input
               id="f_cement"
@@ -1003,7 +1400,9 @@ window.openForm = (id = null) => {
 
           <div class="field">
 
-            <label>Paint brand</label>
+            <label>
+              Paint brand
+            </label>
 
             <input
               id="f_paint"
@@ -1015,7 +1414,9 @@ window.openForm = (id = null) => {
 
           <div class="field">
 
-            <label>Requirement</label>
+            <label>
+              Requirement
+            </label>
 
             <input
               id="f_requirement"
@@ -1027,9 +1428,13 @@ window.openForm = (id = null) => {
 
           <div class="field full">
 
-            <label>Notes</label>
+            <label>
+              Notes
+            </label>
 
-            <textarea id="f_notes">${esc(x.notes)}</textarea>
+            <textarea
+              id="f_notes"
+            >${esc(x.notes)}</textarea>
 
           </div>
 
@@ -1048,7 +1453,9 @@ window.openForm = (id = null) => {
 
           ${
             editing
+
               ? `
+
                 <button
                   class="btn"
                   style="
@@ -1056,11 +1463,17 @@ window.openForm = (id = null) => {
                     color:white;
                     border-color:#dc2626;
                   "
-                  onclick="deleteCustomer('${esc(editing.id)}')"
+                  onclick="
+                    deleteCustomer(
+                      '${esc(editing.id)}'
+                    )
+                  "
                 >
                   🗑️ Delete Customer
                 </button>
+
               `
+
               : ''
           }
 
@@ -1083,6 +1496,7 @@ window.openForm = (id = null) => {
 
 };
 
+
 window.closeModal = () => {
 
   document
@@ -1099,52 +1513,101 @@ window.closeModal = () => {
 window.saveCustomer = async () => {
 
   const get = id =>
-    document.querySelector(id)?.value.trim() || '';
+    document
+      .querySelector(id)
+      ?.value
+      .trim() || '';
 
-  const name = get('#f_name');
-  const phone = get('#f_phone');
+  const name =
+    get('#f_name');
+
+  const phone =
+    get('#f_phone');
 
   if (!name || !phone) {
+
     return alert(
       'Name and mobile are required.'
     );
+
   }
 
   const data = {
 
     name,
+
     phone,
-    whatsapp: phone,
-    site: get('#f_site'),
-    status: get('#f_status'),
-    address: get('#f_address'),
-    stage: get('#f_stage'),
-    siteLevel: get('#f_stage'),
 
-    /* CUSTOMER TYPE */
-    customerType: get('#f_customerType'),
+    whatsapp:
+      phone,
 
-    followup: get('#f_followup'),
-    followUpDate: get('#f_followup'),
-    steel: get('#f_steel'),
-    cement: get('#f_cement'),
-    paint: get('#f_paint'),
-    requirement: get('#f_requirement'),
-    notes: get('#f_notes'),
-    calledAt: editing?.calledAt || '',
-    updatedAt: new Date().toISOString()
+    site:
+      get('#f_site'),
+
+    status:
+      get('#f_status'),
+
+    address:
+      get('#f_address'),
+
+    stage:
+      get('#f_stage'),
+
+    siteLevel:
+      get('#f_stage'),
+
+    customerType:
+      get('#f_customerType'),
+
+    followup:
+      get('#f_followup'),
+
+    followUpDate:
+      get('#f_followup'),
+
+    steel:
+      get('#f_steel'),
+
+    cement:
+      get('#f_cement'),
+
+    paint:
+      get('#f_paint'),
+
+    requirement:
+      get('#f_requirement'),
+
+    notes:
+      get('#f_notes'),
+
+    calledAt:
+      editing?.calledAt || '',
+
+    updatedAt:
+      new Date().toISOString()
 
   };
 
+
   try {
 
-    if (CLOUD_ENABLED && db) {
+    if (
+      CLOUD_ENABLED &&
+      db
+    ) {
 
       if (editing) {
 
         await updateDoc(
-          doc(db, 'customers', editing.id),
+
+          doc(
+            db,
+            'customers',
+            editing.id
+          ),
+
           data
+
         );
 
       } else {
@@ -1160,17 +1623,23 @@ window.saveCustomer = async () => {
 
       if (editing) {
 
-        data.id = editing.id;
+        data.id =
+          editing.id;
 
-        customers = customers.map(x =>
-          x.id === editing.id
-            ? data
-            : x
-        );
+        customers =
+          customers.map(x =>
+
+            x.id === editing.id
+              ? data
+              : x
+
+          );
 
       } else {
 
-        data.id = crypto.randomUUID();
+        data.id =
+          crypto.randomUUID();
+
         customers.push(data);
 
       }
@@ -1181,9 +1650,12 @@ window.saveCustomer = async () => {
     }
 
     closeModal();
+
     editing = null;
 
-    toast('Customer saved');
+    toast(
+      'Customer saved'
+    );
 
   } catch (error) {
 
@@ -1205,32 +1677,52 @@ window.saveCustomer = async () => {
 window.deleteCustomer = async id => {
 
   const customer =
-    customers.find(x => x.id === id);
+    customers.find(
+      x => x.id === id
+    );
 
   if (!customer) {
-    return alert('Customer not found.');
+
+    return alert(
+      'Customer not found.'
+    );
+
   }
 
-  if (!confirm(
-    `Delete "${customer.name}" permanently?\n\n` +
-    `All customer data will be deleted.\n\n` +
-    `This action cannot be undone.`
-  )) {
+  if (
+    !confirm(
+      `Delete "${customer.name}" permanently?\n\n` +
+      `All customer data will be deleted.\n\n` +
+      `This action cannot be undone.`
+    )
+  ) {
+
     return;
+
   }
+
 
   try {
 
-    if (CLOUD_ENABLED && db) {
+    if (
+      CLOUD_ENABLED &&
+      db
+    ) {
 
       await deleteDoc(
-        doc(db, 'customers', id)
+        doc(
+          db,
+          'customers',
+          id
+        )
       );
 
     } else {
 
       customers =
-        customers.filter(x => x.id !== id);
+        customers.filter(
+          x => x.id !== id
+        );
 
       saveLocal();
 
@@ -1239,14 +1731,21 @@ window.deleteCustomer = async id => {
     }
 
     selectedIds.delete(id);
+
     editing = null;
+
     closeModal();
 
-    toast('Customer deleted');
+    toast(
+      'Customer deleted'
+    );
 
   } catch (error) {
 
-    console.error('Delete error:', error);
+    console.error(
+      'Delete error:',
+      error
+    );
 
     alert(
       'Could not delete customer. Please check your Firestore rules.'
@@ -1261,31 +1760,45 @@ window.deleteCustomer = async id => {
    SELECT CUSTOMERS
    ================================ */
 
-window.toggleSelected = (id, checked) => {
+window.toggleSelected = (
+  id,
+  checked
+) => {
 
   if (checked) {
+
     selectedIds.add(id);
+
   } else {
+
     selectedIds.delete(id);
+
   }
 
   render();
 
 };
 
+
 window.selectVisible = () => {
 
-  getVisibleCustomers().forEach(
-    customer => selectedIds.add(customer.id)
-  );
+  getVisibleCustomers()
+    .forEach(
+      customer =>
+        selectedIds.add(
+          customer.id
+        )
+    );
 
   render();
 
 };
 
+
 window.clearSelected = () => {
 
   selectedIds.clear();
+
   render();
 
 };
@@ -1298,23 +1811,59 @@ window.clearSelected = () => {
 function exportRows() {
 
   return customers
-    .filter(customer => selectedIds.has(customer.id))
+
+    .filter(
+      customer =>
+        selectedIds.has(
+          customer.id
+        )
+    )
+
     .map(customer => ({
 
-      'Customer Name': customer.name || '',
-      'Mobile': customer.phone || '',
-      'Site Name': customer.site || '',
-      'Customer Type': customer.customerType || '',
-      'Status': customer.status || '',
-      'Address / Location': customer.address || '',
-      'Construction Stage': customer.stage || '',
-      'Follow-up Date': customer.followup || '',
-      'Steel Brand': customer.steel || '',
-      'Cement Brand': customer.cement || '',
-      'Paint Brand': customer.paint || '',
-      'Requirement': customer.requirement || '',
-      'Called Today': wasCalledToday(customer) ? 'Yes' : 'No',
-      'Notes': customer.notes || ''
+      'Customer Name':
+        customer.name || '',
+
+      'Mobile':
+        customer.phone || '',
+
+      'Site Name':
+        customer.site || '',
+
+      'Customer Type':
+        customer.customerType || '',
+
+      'Status':
+        customer.status || '',
+
+      'Address / Location':
+        customer.address || '',
+
+      'Construction Stage':
+        customer.stage || '',
+
+      'Follow-up Date':
+        customer.followup || '',
+
+      'Steel Brand':
+        customer.steel || '',
+
+      'Cement Brand':
+        customer.cement || '',
+
+      'Paint Brand':
+        customer.paint || '',
+
+      'Requirement':
+        customer.requirement || '',
+
+      'Called Today':
+        wasCalledToday(customer)
+          ? 'Yes'
+          : 'No',
+
+      'Notes':
+        customer.notes || ''
 
     }));
 
@@ -1327,30 +1876,37 @@ function exportRows() {
 
 window.exportSelected = format => {
 
-  const rows = exportRows();
+  const rows =
+    exportRows();
 
   if (!rows.length) {
+
     return alert(
       'Please select at least one customer to export.'
     );
+
   }
 
   const stamp =
-    new Date().toISOString().slice(0, 10);
+    new Date()
+      .toISOString()
+      .slice(0, 10);
 
-
-  /* EXCEL */
 
   if (format === 'xlsx') {
 
     if (!window.XLSX) {
+
       return alert(
         'Excel export library is not loaded.'
       );
+
     }
 
     const ws =
-      XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.json_to_sheet(
+        rows
+      );
 
     const wb =
       XLSX.utils.book_new();
@@ -1371,31 +1927,47 @@ window.exportSelected = format => {
     );
 
     return;
+
   }
 
 
-  /* PDF */
+  if (format !== 'pdf') {
+    return;
+  }
 
-  if (format !== 'pdf') return;
 
   if (
     !window.jspdf ||
     !window.jspdf.jsPDF
   ) {
+
     return alert(
       'PDF library is not loaded.'
     );
+
   }
 
-  const { jsPDF } = window.jspdf;
 
-  const pdf = new jsPDF({
-    orientation: 'landscape',
-    unit: 'mm',
-    format: 'a4'
-  });
+  const { jsPDF } =
+    window.jspdf;
+
+  const pdf =
+    new jsPDF({
+
+      orientation:
+        'landscape',
+
+      unit:
+        'mm',
+
+      format:
+        'a4'
+
+    });
+
 
   const headers = [
+
     '#',
     'Customer',
     'Mobile',
@@ -1408,34 +1980,59 @@ window.exportSelected = format => {
     'Cement',
     'Paint',
     'Called'
+
   ];
 
-  const body = rows.map((row, index) => [
 
-    index + 1,
-    row['Customer Name'],
-    row['Mobile'],
-    row['Customer Type'],
-    row['Site Name'],
-    row['Status'],
-    row['Construction Stage'],
-    row['Follow-up Date'],
-    row['Steel Brand'],
-    row['Cement Brand'],
-    row['Paint Brand'],
-    row['Called Today']
+  const body =
+    rows.map(
+      (row, index) => [
 
-  ]);
+        index + 1,
+
+        row['Customer Name'],
+
+        row['Mobile'],
+
+        row['Customer Type'],
+
+        row['Site Name'],
+
+        row['Status'],
+
+        row['Construction Stage'],
+
+        row['Follow-up Date'],
+
+        row['Steel Brand'],
+
+        row['Cement Brand'],
+
+        row['Paint Brand'],
+
+        row['Called Today']
+
+      ]
+    );
+
 
   pdf.setFontSize(18);
-  pdf.text('SiteTrack', 14, 14);
+
+  pdf.text(
+    'SiteTrack',
+    14,
+    14
+  );
+
 
   pdf.setFontSize(10);
+
   pdf.text(
     'Saravana Steel Company',
     14,
     20
   );
+
 
   pdf.text(
     `Customer List • ${stamp}`,
@@ -1443,21 +2040,31 @@ window.exportSelected = format => {
     26
   );
 
+
   pdf.text(
     `Total Customers: ${rows.length}`,
     14,
     32
   );
 
-  if (typeof pdf.autoTable !== 'function') {
+
+  if (
+    typeof pdf.autoTable !==
+    'function'
+  ) {
+
     return alert(
       'PDF table plugin is not loaded. Please refresh the app.'
     );
+
   }
+
 
   pdf.autoTable({
 
-    head: [headers],
+    head: [
+      headers
+    ],
 
     body,
 
@@ -1466,37 +2073,86 @@ window.exportSelected = format => {
     theme: 'grid',
 
     styles: {
+
       fontSize: 7,
+
       cellPadding: 2,
-      overflow: 'linebreak',
-      valign: 'middle'
+
+      overflow:
+        'linebreak',
+
+      valign:
+        'middle'
+
     },
 
     headStyles: {
+
       fontSize: 7,
-      fontStyle: 'bold'
+
+      fontStyle:
+        'bold'
+
     },
 
     columnStyles: {
 
-      0: { cellWidth: 7 },
-      1: { cellWidth: 28 },
-      2: { cellWidth: 22 },
-      3: { cellWidth: 23 },
-      4: { cellWidth: 25 },
-      5: { cellWidth: 16 },
-      6: { cellWidth: 22 },
-      7: { cellWidth: 21 },
-      8: { cellWidth: 23 },
-      9: { cellWidth: 23 },
-      10: { cellWidth: 23 },
-      11: { cellWidth: 14 }
+      0: {
+        cellWidth: 7
+      },
+
+      1: {
+        cellWidth: 28
+      },
+
+      2: {
+        cellWidth: 22
+      },
+
+      3: {
+        cellWidth: 23
+      },
+
+      4: {
+        cellWidth: 25
+      },
+
+      5: {
+        cellWidth: 16
+      },
+
+      6: {
+        cellWidth: 22
+      },
+
+      7: {
+        cellWidth: 21
+      },
+
+      8: {
+        cellWidth: 23
+      },
+
+      9: {
+        cellWidth: 23
+      },
+
+      10: {
+        cellWidth: 23
+      },
+
+      11: {
+        cellWidth: 14
+      }
 
     },
 
     margin: {
+
       left: 5,
+
       right: 5
+
     },
 
     didDrawPage: data => {
@@ -1519,9 +2175,11 @@ window.exportSelected = format => {
 
   });
 
+
   pdf.save(
     `SiteTrack-customers-${stamp}.pdf`
   );
+
 
   toast(
     `${rows.length} customer(s) exported to PDF`
@@ -1537,10 +2195,15 @@ window.exportSelected = format => {
 window.openMessageGenerator = () => {
 
   app.insertAdjacentHTML(
+
     'beforeend',
+
     `
 
-    <div class="modal" id="modal">
+    <div
+      class="modal"
+      id="modal"
+    >
 
       <div class="sheet">
 
@@ -1549,16 +2212,22 @@ window.openMessageGenerator = () => {
         </h2>
 
         <p class="muted">
+
           Create a ready-to-send message from the customer's saved details.
           Works without any AI service or paid add-on.
+
         </p>
 
 
         <div class="field">
 
-          <label>Message type</label>
+          <label>
+            Message type
+          </label>
 
-          <select id="messageType">
+          <select
+            id="messageType"
+          >
 
             <option value="followup">
               📅 Follow-up
@@ -1659,11 +2328,17 @@ window.openMessageGenerator = () => {
 
   const selected =
     customers.filter(
-      customer => selectedIds.has(customer.id)
+      customer =>
+        selectedIds.has(
+          customer.id
+        )
     );
 
+
   const box =
-    document.querySelector('#messageCustomer');
+    document.querySelector(
+      '#messageCustomer'
+    );
 
 
   if (selected.length === 1) {
@@ -1672,16 +2347,29 @@ window.openMessageGenerator = () => {
       selected[0];
 
     box.innerHTML = `
+
       <b>
-        ${esc(selected[0].name || 'Customer')}
+        ${esc(
+          selected[0].name ||
+          'Customer'
+        )}
       </b>
+
       <br>
-      ${esc(selected[0].phone || '')}
+
+      ${esc(
+        selected[0].phone || ''
+      )}
+
       ${
         selected[0].site
-          ? ' • ' + esc(selected[0].site)
+          ? ' • ' +
+            esc(
+              selected[0].site
+            )
           : ''
       }
+
     `;
 
   } else if (selected.length > 1) {
@@ -1705,28 +2393,36 @@ function buildNormalMessage(
 ) {
 
   const name =
-    customer.name || 'Customer';
+    customer.name ||
+    'Customer';
 
   const site =
-    customer.site || 'your site';
+    customer.site ||
+    'your site';
 
   const stage =
-    customer.stage || '';
+    customer.stage ||
+    '';
 
   const requirement =
-    customer.requirement || '';
+    customer.requirement ||
+    '';
 
   const followup =
-    customer.followup || '';
+    customer.followup ||
+    '';
 
   const steel =
-    customer.steel || '';
+    customer.steel ||
+    '';
 
   const cement =
-    customer.cement || '';
+    customer.cement ||
+    '';
 
   const paint =
-    customer.paint || '';
+    customer.paint ||
+    '';
 
   const suffix =
     extra.trim()
@@ -1783,31 +2479,52 @@ window.generateNormalMessage = () => {
 
   const selected =
     customers.filter(
-      customer => selectedIds.has(customer.id)
+      customer =>
+        selectedIds.has(
+          customer.id
+        )
     );
 
+
   if (!selected.length) {
+
     return alert(
       'Select one customer first, then open Message Generator.'
     );
+
   }
 
+
   if (selected.length > 1) {
+
     return alert(
       'For a personalized message, select one customer at a time.'
     );
+
   }
+
 
   lastMessageRecipient =
     selected[0];
 
+
   const type =
-    document.querySelector('#messageType')?.value ||
+    document
+      .querySelector(
+        '#messageType'
+      )
+      ?.value ||
     'followup';
 
+
   const extra =
-    document.querySelector('#messageExtra')?.value ||
+    document
+      .querySelector(
+        '#messageExtra'
+      )
+      ?.value ||
     '';
+
 
   lastMessage =
     buildNormalMessage(
@@ -1816,10 +2533,17 @@ window.generateNormalMessage = () => {
       extra
     );
 
-  const result =
-    document.querySelector('#messageResult');
 
-  if (!result) return;
+  const result =
+    document.querySelector(
+      '#messageResult'
+    );
+
+
+  if (!result) {
+    return;
+  }
+
 
   result.innerHTML = `
 
@@ -1880,7 +2604,10 @@ window.generateNormalMessage = () => {
 function getEditedMessage() {
 
   const element =
-    document.querySelector('#generatedMessage');
+    document.querySelector(
+      '#generatedMessage'
+    );
+
 
   const message =
     (
@@ -1889,97 +2616,149 @@ function getEditedMessage() {
       ''
     ).trim();
 
+
   if (element) {
-    lastMessage = message;
+    lastMessage =
+      message;
   }
 
+
   if (!message) {
-    alert('Generate a message first.');
+
+    alert(
+      'Generate a message first.'
+    );
+
     return '';
+
   }
+
 
   return message;
 
 }
 
 
-window.copyGeneratedMessage = async () => {
+window.copyGeneratedMessage =
+  async () => {
 
-  const message =
-    getEditedMessage();
+    const message =
+      getEditedMessage();
 
-  if (!message) return;
+    if (!message) return;
 
-  try {
+    try {
 
-    await navigator.clipboard.writeText(message);
+      await navigator
+        .clipboard
+        .writeText(
+          message
+        );
 
-    toast('Message copied');
+      toast(
+        'Message copied'
+      );
 
-  } catch {
+    } catch {
 
-    alert(
-      'Copy is not available on this device. You can select and copy the message manually.'
+      alert(
+        'Copy is not available on this device. You can select and copy the message manually.'
+      );
+
+    }
+
+  };
+
+
+window.sendGeneratedWhatsApp =
+  () => {
+
+    const message =
+      getEditedMessage();
+
+    if (
+      !message ||
+      !lastMessageRecipient
+    ) {
+      return;
+    }
+
+
+    const phone =
+      String(
+        lastMessageRecipient.phone ||
+        ''
+      ).replace(
+        /\D/g,
+        ''
+      );
+
+
+    if (!phone) {
+
+      return alert(
+        'This customer does not have a phone number.'
+      );
+
+    }
+
+
+    const normalized =
+      phone.startsWith('91')
+        ? phone
+        : `91${phone}`;
+
+
+    window.open(
+
+      `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`,
+
+      '_blank'
+
     );
 
-  }
-
-};
+  };
 
 
-window.sendGeneratedWhatsApp = () => {
+window.sendGeneratedSMS =
+  () => {
 
-  const message =
-    getEditedMessage();
+    const message =
+      getEditedMessage();
 
-  if (!message || !lastMessageRecipient) return;
-
-  const phone =
-    String(
-      lastMessageRecipient.phone || ''
-    ).replace(/\D/g, '');
-
-  if (!phone) {
-    return alert(
-      'This customer does not have a phone number.'
-    );
-  }
-
-  const normalized =
-    phone.startsWith('91')
-      ? phone
-      : `91${phone}`;
-
-  window.open(
-    `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`,
-    '_blank'
-  );
-
-};
+    if (
+      !message ||
+      !lastMessageRecipient
+    ) {
+      return;
+    }
 
 
-window.sendGeneratedSMS = () => {
+    const phone =
+      String(
+        lastMessageRecipient.phone ||
+        ''
+      ).replace(
+        /\D/g,
+        ''
+      );
 
-  const message =
-    getEditedMessage();
 
-  if (!message || !lastMessageRecipient) return;
+    if (!phone) {
 
-  const phone =
-    String(
-      lastMessageRecipient.phone || ''
-    ).replace(/\D/g, '');
+      return alert(
+        'This customer does not have a phone number.'
+      );
 
-  if (!phone) {
-    return alert(
-      'This customer does not have a phone number.'
-    );
-  }
+    }
 
-  window.location.href =
-    `sms:${phone}?body=${encodeURIComponent(message)}`;
 
-};
+    window.location.href =
+      `sms:${phone}?body=${encodeURIComponent(
+        message
+      )}`;
+
+  };
 
 
 /* ================================
@@ -1991,14 +2770,23 @@ window.openBulk = () => {
   const active =
     customers.filter(
       customer =>
-        String(customer.status).toLowerCase() === 'active'
+        String(
+          customer.status
+        ).toLowerCase() ===
+        'active'
     );
 
+
   app.insertAdjacentHTML(
+
     'beforeend',
+
     `
 
-    <div class="modal" id="modal">
+    <div
+      class="modal"
+      id="modal"
+    >
 
       <div class="sheet">
 
@@ -2007,49 +2795,72 @@ window.openBulk = () => {
         </h2>
 
         <p class="muted">
+
           Select customers. Android will open the SMS composer
           with the selected numbers.
+
         </p>
+
 
         <div class="field">
 
-          <label>Message</label>
+          <label>
+            Message
+          </label>
 
           <textarea id="bulkmsg">Dear Customer, please contact us if you have any requirements. Thank you.</textarea>
 
         </div>
 
+
         <div class="list">
 
           ${
             active.length
-              ? active.map(customer => `
-                  <label
-                    class="card"
-                    style="display:block"
-                  >
 
-                    <input
-                      type="checkbox"
-                      class="bulkpick"
-                      value="${esc(customer.phone)}"
-                      checked
+              ? active.map(
+                  customer => `
+
+                    <label
+                      class="card"
+                      style="display:block"
                     >
 
-                    ${esc(customer.name)}
-                    —
-                    ${esc(customer.phone)}
+                      <input
+                        type="checkbox"
+                        class="bulkpick"
+                        value="${esc(
+                          customer.phone
+                        )}"
+                        checked
+                      >
 
-                  </label>
-                `).join('')
+                      ${esc(
+                        customer.name
+                      )}
+
+                      —
+
+                      ${esc(
+                        customer.phone
+                      )}
+
+                    </label>
+
+                  `
+                ).join('')
+
               : `
+
                 <div class="empty">
                   No active customers.
                 </div>
+
               `
           }
 
         </div>
+
 
         <div class="sheet-actions">
 
@@ -2082,19 +2893,39 @@ window.openBulk = () => {
 window.sendBulk = () => {
 
   const nums = [
-    ...document.querySelectorAll('.bulkpick:checked')
+
+    ...document
+      .querySelectorAll(
+        '.bulkpick:checked'
+      )
+
   ].map(
     element =>
-      element.value.replace(/\D/g, '')
+      element.value
+        .replace(
+          /\D/g,
+          ''
+        )
   );
 
-  const message =
-    document.querySelector('#bulkmsg')?.value || '';
 
-  if (!nums.length) return;
+  const message =
+    document
+      .querySelector(
+        '#bulkmsg'
+      )
+      ?.value || '';
+
+
+  if (!nums.length) {
+    return;
+  }
+
 
   location.href =
-    `sms:${nums.join(',')}?body=${encodeURIComponent(message)}`;
+    `sms:${nums.join(',')}?body=${encodeURIComponent(
+      message
+    )}`;
 
 };
 
@@ -2106,9 +2937,13 @@ window.sendBulk = () => {
 window.showInfo = () => {
 
   alert(
+
     CLOUD_ENABLED
+
       ? '☁️ Firebase Cloud Sync is connected. Customer data is stored in Firestore.'
+
       : 'Cloud sync is not configured.'
+
   );
 
 };
@@ -2118,7 +2953,9 @@ window.showInfo = () => {
    SERVICE WORKER
    ================================ */
 
-if ('serviceWorker' in navigator) {
+if (
+  'serviceWorker' in navigator
+) {
 
   navigator.serviceWorker
     .register('./sw.js')
